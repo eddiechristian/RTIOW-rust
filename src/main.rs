@@ -14,7 +14,7 @@ use crate::camera::Camera;
 use crate::color::Color;
 use crate::hittable_list::HittableList;
 use crate::material::{Dielectric, Lambertian, Metal};
-use crate::rtweekend::Point3;
+use crate::rtweekend::{Point3, Vec3};
 use crate::sphere::Sphere;
 
 fn main() -> std::io::Result<()> {
@@ -59,6 +59,11 @@ fn main() -> std::io::Result<()> {
     cam.image_width = 1280;
     cam.samples_per_pixel = 100;
     cam.max_depth = 50;
+
+    cam.vfov = 20.0;
+    cam.lookfrom = Point3::new(-2.0, 2.0, 1.0);
+    cam.lookat = Point3::new(0.0, 0.0, -1.0);
+    cam.vup = Vec3::new(0.0, 1.0, 0.0);
 
     cam.render(&world)
 }
