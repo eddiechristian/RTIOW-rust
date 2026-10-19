@@ -47,6 +47,20 @@ pub fn random_unit_vector() -> Vec3 {
     }
 }
 
+// Returns a random point inside the unit disk in the xy plane.
+pub fn random_in_unit_disk() -> Vec3 {
+    loop {
+        let p = Vec3::new(
+            random_double_range(-1.0, 1.0),
+            random_double_range(-1.0, 1.0),
+            0.0,
+        );
+        if p.norm_squared() < 1.0 {
+            return p;
+        }
+    }
+}
+
 // Return true if the vector is close to zero in all dimensions.
 pub fn near_zero(v: &Vec3) -> bool {
     let s = 1e-8;
