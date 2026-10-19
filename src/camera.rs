@@ -1,5 +1,8 @@
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
+use std::sync::atomic::{AtomicI32, Ordering};
+
+use rayon::prelude::*;
 
 use crate::color::{Color, write_color};
 use crate::hittable::Hittable;
@@ -72,20 +75,31 @@ impl Camera {
         writeln!(writer, "{} {}", self.image_width, self.image_height)?;
         writeln!(writer, "255")?;
 
-        // Pixels
-        for j in 0..self.image_height {
-            let rem = self.image_height - j;
-            print!("\rScanlines remaining: {}   ", rem);
-            io::stdout().flush().unwrap();
-            for i in 0..self.image_width {
-                let mut pixel_color = Color::new(0.0, 0.0, 0.0);
-                for _ in 0..self.samples_per_pixel {
-                    let r = self.get_ray(i, j);
-                    pixel_color += Self::ray_color(&r, self.max_depth, world);
-                }
+        // Pixels: render scanlines in parallel (rayon), then write them out in order.
+        let remaining = AtomicI32::new(self.image_height);
+        let rows: Vec<Vec<Color>> = (0..self.image_height)
+            .into_par_iter()
+            .map(|j| {
+                let row = (0..self.image_width)
+                    .map(|i| {
+                        let mut pixel_color = Color::new(0.0, 0.0, 0.0);
+                        for _ in 0..self.samples_per_pixel {
+                            let r = self.get_ray(i, j);
+                            pixel_color += Self::ray_color(&r, self.max_depth, world);
+                        }
+                        self.pixel_samples_scale * pixel_color
+                    })
+                    .collect();
 
-                write_color(&mut writer, self.pixel_samples_scale * pixel_color);
-            }
+                let rem = remaining.fetch_sub(1, Ordering::Relaxed) - 1;
+                print!("\rScanlines remaining: {}   ", rem);
+                io::stdout().flush().unwrap();
+                row
+            })
+            .collect();
+
+        for pixel_color in rows.into_iter().flatten() {
+            write_color(&mut writer, pixel_color);
         }
 
         // Explicitly flush to save safely to disk

@@ -3,7 +3,8 @@ use crate::hittable::HitRecord;
 use crate::ray::Ray;
 use crate::rtweekend::{near_zero, random_double, random_unit_vector, reflect, refract};
 
-pub trait Material {
+// Send + Sync so materials can be shared across rayon render threads.
+pub trait Material: Send + Sync {
     // Returns the attenuation and scattered ray, or None if the ray is absorbed.
     fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)>;
 }

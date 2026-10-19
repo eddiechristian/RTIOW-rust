@@ -24,6 +24,7 @@ impl HitRecord {
     }
 }
 
-pub trait Hittable {
+// Send + Sync so the world can be shared across rayon render threads.
+pub trait Hittable: Send + Sync {
     fn hit(&self, ray: &Ray, ray_t: Interval) -> Option<HitRecord>;
 }

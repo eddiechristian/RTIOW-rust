@@ -17,7 +17,6 @@ pub fn random_double_range(min: f64, max: f64) -> f64 {
     min + (max - min) * random_double()
 }
 
-#[allow(dead_code)] // part of the book's vec3 API; not called yet
 pub fn random_vec3() -> Vec3 {
     let mut vec = Vec3::default();
     vec.x = random_double();
