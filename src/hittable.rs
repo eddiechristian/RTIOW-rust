@@ -3,7 +3,6 @@ use crate::ray::Ray;
 use crate::rtweekend::{Point3, Vec3};
 
 pub struct HitRecord {
-    #[allow(dead_code)] // TODO: remove once something reads p
     pub p: Point3,
     pub normal: Vec3,
     pub t: f64,

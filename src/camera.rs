@@ -5,12 +5,13 @@ use crate::color::{Color, write_color};
 use crate::hittable::Hittable;
 use crate::interval::Interval;
 use crate::ray::Ray;
-use crate::rtweekend::{Point3, Vec3, random_double};
+use crate::rtweekend::{Point3, Vec3, random_double, random_unit_vector};
 
 pub struct Camera {
     pub aspect_ratio: f64,      // Ratio of image width over height
     pub image_width: i32,       // Rendered image width in pixel count
     pub samples_per_pixel: i32, // Count of random samples for each pixel
+    pub max_depth: i32,         // Maximum number of ray bounces into scene
 
     image_height: i32,        // Rendered image height
     pixel_samples_scale: f64, // Color scale factor for a sum of pixel samples
@@ -26,6 +27,7 @@ impl Camera {
             aspect_ratio: 1.0,
             image_width: 100,
             samples_per_pixel: 10,
+            max_depth: 10,
             image_height: 0,
             pixel_samples_scale: 0.0,
             center: Point3::origin(),
@@ -55,7 +57,7 @@ impl Camera {
                 let mut pixel_color = Color::new(0.0, 0.0, 0.0);
                 for _ in 0..self.samples_per_pixel {
                     let r = self.get_ray(i, j);
-                    pixel_color += Self::ray_color(&r, world);
+                    pixel_color += Self::ray_color(&r, self.max_depth, world);
                 }
 
                 write_color(&mut writer, self.pixel_samples_scale * pixel_color);
@@ -113,10 +115,17 @@ impl Camera {
         Vec3::new(random_double() - 0.5, random_double() - 0.5, 0.0)
     }
 
-    fn ray_color(r: &Ray, world: &dyn Hittable) -> Color {
-        if let Some(rec) = world.hit(r, Interval::new(0.0, f64::INFINITY)) {
-            // Map the unit normal's components from [-1, 1] to [0, 1] for color
-            return 0.5 * (rec.normal + Color::new(1.0, 1.0, 1.0));
+    fn ray_color(r: &Ray, depth: i32, world: &dyn Hittable) -> Color {
+        // If we've exceeded the ray bounce limit, no more light is gathered.
+        if depth <= 0 {
+            return Color::new(0.0, 0.0, 0.0);
+        }
+
+        // Start at 0.001 so floating-point error doesn't re-hit the surface (shadow acne).
+        if let Some(rec) = world.hit(r, Interval::new(0.001, f64::INFINITY)) {
+            // Lambertian reflection: bounce toward normal + a random unit vector.
+            let direction = rec.normal + random_unit_vector();
+            return 0.5 * Self::ray_color(&Ray::new(&rec.p, &direction), depth - 1, world);
         }
 
         // 1. Get the unit vector of the ray's direction (.normalize() in nalgebra)
