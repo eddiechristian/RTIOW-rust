@@ -43,6 +43,17 @@ pub fn random_unit_vector() -> Vec3 {
     }
 }
 
+// Return true if the vector is close to zero in all dimensions.
+pub fn near_zero(v: &Vec3) -> bool {
+    let s = 1e-8;
+    v.x.abs() < s && v.y.abs() < s && v.z.abs() < s
+}
+
+// Reflect v about the unit normal n.
+pub fn reflect(v: &Vec3, n: &Vec3) -> Vec3 {
+    v - 2.0 * v.dot(n) * n
+}
+
 // Returns a random unit vector on the hemisphere around the given normal.
 #[allow(dead_code)] // replaced by Lambertian scattering in 9.4; kept as in the book
 pub fn random_on_hemisphere(normal: &Vec3) -> Vec3 {

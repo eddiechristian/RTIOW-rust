@@ -5,7 +5,7 @@ use crate::color::{Color, write_color};
 use crate::hittable::Hittable;
 use crate::interval::Interval;
 use crate::ray::Ray;
-use crate::rtweekend::{Point3, Vec3, random_double, random_unit_vector};
+use crate::rtweekend::{Point3, Vec3, random_double};
 
 pub struct Camera {
     pub aspect_ratio: f64,      // Ratio of image width over height
@@ -123,9 +123,11 @@ impl Camera {
 
         // Start at 0.001 so floating-point error doesn't re-hit the surface (shadow acne).
         if let Some(rec) = world.hit(r, Interval::new(0.001, f64::INFINITY)) {
-            // Lambertian reflection: bounce toward normal + a random unit vector.
-            let direction = rec.normal + random_unit_vector();
-            return 0.5 * Self::ray_color(&Ray::new(&rec.p, &direction), depth - 1, world);
+            // The material decides how the ray scatters and how much light it keeps.
+            if let Some((attenuation, scattered)) = rec.mat.scatter(r, &rec) {
+                return attenuation.component_mul(&Self::ray_color(&scattered, depth - 1, world));
+            }
+            return Color::new(0.0, 0.0, 0.0);
         }
 
         // 1. Get the unit vector of the ray's direction (.normalize() in nalgebra)
