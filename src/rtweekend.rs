@@ -54,6 +54,14 @@ pub fn reflect(v: &Vec3, n: &Vec3) -> Vec3 {
     v - 2.0 * v.dot(n) * n
 }
 
+// Refract unit vector uv through the surface with unit normal n (Snell's law).
+pub fn refract(uv: &Vec3, n: &Vec3, etai_over_etat: f64) -> Vec3 {
+    let cos_theta = (-uv).dot(n).min(1.0);
+    let r_out_perp = etai_over_etat * (uv + cos_theta * n);
+    let r_out_parallel = -((1.0 - r_out_perp.norm_squared()).abs().sqrt()) * n;
+    r_out_perp + r_out_parallel
+}
+
 // Returns a random unit vector on the hemisphere around the given normal.
 #[allow(dead_code)] // replaced by Lambertian scattering in 9.4; kept as in the book
 pub fn random_on_hemisphere(normal: &Vec3) -> Vec3 {

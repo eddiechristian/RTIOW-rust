@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::camera::Camera;
 use crate::color::Color;
 use crate::hittable_list::HittableList;
-use crate::material::{Lambertian, Metal};
+use crate::material::{Dielectric, Lambertian, Metal};
 use crate::rtweekend::Point3;
 use crate::sphere::Sphere;
 
@@ -23,7 +23,8 @@ fn main() -> std::io::Result<()> {
 
     let material_ground = Arc::new(Lambertian::new(Color::new(0.8, 0.8, 0.0)));
     let material_center = Arc::new(Lambertian::new(Color::new(0.1, 0.2, 0.5)));
-    let material_left = Arc::new(Metal::new(Color::new(0.8, 0.8, 0.8), 0.3));
+    let material_left = Arc::new(Dielectric::new(1.50));
+    let material_bubble = Arc::new(Dielectric::new(1.00 / 1.50));
     let material_right = Arc::new(Metal::new(Color::new(0.8, 0.6, 0.2), 1.0));
 
     world.add(Box::new(Sphere::new(
@@ -40,6 +41,11 @@ fn main() -> std::io::Result<()> {
         &Point3::new(-1.0, 0.0, -1.0),
         0.5,
         material_left,
+    )));
+    world.add(Box::new(Sphere::new(
+        &Point3::new(-1.0, 0.0, -1.0),
+        0.4,
+        material_bubble,
     )));
     world.add(Box::new(Sphere::new(
         &Point3::new(1.0, 0.0, -1.0),
