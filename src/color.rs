@@ -16,7 +16,7 @@ pub fn write_color(writer: &mut BufWriter<File>, pixel_color: Color) {
     match writeln!(writer, "{} {} {}", ir, ig, ib) {
         Ok(_) => {} // Do nothing on success
         Err(e) => {
-            eprintln!("\nFailed to writeto ppm file");
+            eprintln!("\nFailed to write to ppm file: {}", e);
         }
     }
 }
