@@ -1,6 +1,8 @@
 mod color;
+mod hittable;
 mod ray;
 mod rtweekend;
+mod sphere;
 
 use std::fs::File;
 use std::io::{self};
@@ -8,12 +10,16 @@ use std::io::{BufWriter, Write}; // Required for flushing stdout
 
 use crate::color::Color;
 use crate::color::write_color;
+use crate::hittable::Hittable;
 use crate::ray::Ray;
 use crate::rtweekend::{Point3, Vec3};
+use crate::sphere::Sphere;
 
 pub fn ray_color(r: &Ray) -> Color {
-    if hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5, r) {
-        return Color::new(1.0, 0.0, 0.0);
+    let sphere = Sphere::new(&Point3::new(0.0, 0.0, -1.0), 0.5);
+    if let Some(rec) = sphere.hit(r, 0.0, f64::INFINITY) {
+        // Map the unit normal's components from [-1, 1] to [0, 1] for color
+        return 0.5 * (rec.normal + Color::new(1.0, 1.0, 1.0));
     }
 
     // 1. Get the unit vector of the ray's direction (.normalize() in nalgebra)
@@ -27,15 +33,6 @@ pub fn ray_color(r: &Ray) -> Color {
     let blue = Color::new(0.5, 0.7, 1.0);
 
     (1.0 - a) * white + a * blue
-}
-
-fn hit_sphere(center: &Point3, radius: f64, ray: &Ray) -> bool {
-    let oc: Vec3 = center - ray.orig;
-    let a: f64 = ray.dir.dot(&ray.dir);
-    let b: f64 = -2.0 * ray.dir.dot(&oc);
-    let c = oc.dot(&oc) - radius * radius;
-    let discriminant = b * b - 4.0 * a * c;
-    discriminant >= 0.0
 }
 
 fn main() -> std::io::Result<()> {
