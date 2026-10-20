@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::aabb::AABB;
 use crate::interval::Interval;
 use crate::material::Material;
 use crate::ray::Ray;
@@ -25,6 +26,11 @@ impl HitRecord {
 }
 
 // Send + Sync so the world can be shared across rayon render threads.
-pub trait Hittable: Send + Sync {
+// BBox is a supertrait so a `dyn Hittable` can also report its bounding box.
+pub trait Hittable: BBox + Send + Sync {
     fn hit(&self, ray: &Ray, ray_t: Interval) -> Option<HitRecord>;
+}
+
+pub trait BBox {
+    fn bounding_box(&self) -> AABB;
 }

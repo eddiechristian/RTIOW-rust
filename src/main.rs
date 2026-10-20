@@ -1,3 +1,5 @@
+mod aabb;
+mod bvh_node;
 mod camera;
 mod color;
 mod hittable;
@@ -10,6 +12,7 @@ mod sphere;
 
 use std::sync::Arc;
 
+use crate::bvh_node::BVHNode;
 use crate::camera::Camera;
 use crate::color::Color;
 use crate::hittable_list::HittableList;
@@ -78,6 +81,8 @@ fn main() -> std::io::Result<()> {
         1.0,
         material3,
     )));
+
+    let world = BVHNode::from_list(world);
 
     // Camera
     let mut cam = Camera::new();

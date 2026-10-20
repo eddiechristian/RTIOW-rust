@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::hittable::{HitRecord, Hittable};
+use crate::aabb::AABB;
+use crate::hittable::{BBox, HitRecord, Hittable};
 use crate::interval::Interval;
 use crate::material::Material;
 use crate::ray::Ray;
@@ -10,14 +11,19 @@ pub struct Sphere {
     center: Point3,
     radius: f64,
     mat: Arc<dyn Material>,
+    bbox: AABB,
 }
 
 impl Sphere {
     pub fn new(center: &Point3, radius: f64, mat: Arc<dyn Material>) -> Self {
+        let radius = radius.max(0.0);
+        let rvec = Vec3::new(radius, radius, radius);
+        let bbox = AABB::from_points(center - rvec, center + rvec);
         Sphere {
             center: *center,
-            radius: radius.max(0.0),
+            radius,
             mat,
+            bbox,
         }
     }
 }
@@ -57,5 +63,11 @@ impl Hittable for Sphere {
         hit_rec.set_face_normal(ray, &normal);
 
         Some(hit_rec)
+    }
+}
+
+impl BBox for Sphere {
+    fn bounding_box(&self) -> AABB {
+        self.bbox
     }
 }
