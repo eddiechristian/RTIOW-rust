@@ -59,6 +59,9 @@ impl Hittable for Sphere {
             normal,
             mat: Arc::clone(&self.mat),
             front_face: true,
+            // Real sphere UVs come in a later section; solid textures only use p.
+            u: 0.0,
+            v: 0.0,
         };
         hit_rec.set_face_normal(ray, &normal);
 

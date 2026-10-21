@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use crate::color::Color;
 use crate::hittable::HitRecord;
 use crate::ray::Ray;
 use crate::rtweekend::{near_zero, random_double, random_unit_vector, reflect, refract};
+use crate::texture::{SolidColorTexture, Texture};
 
 // Send + Sync so materials can be shared across rayon render threads.
 pub trait Material: Send + Sync {
@@ -10,12 +13,16 @@ pub trait Material: Send + Sync {
 }
 
 pub struct Lambertian {
-    albedo: Color,
+    tex: Arc<dyn Texture>,
 }
 
 impl Lambertian {
     pub fn new(albedo: Color) -> Self {
-        Self { albedo }
+        Self::from_texture(Arc::new(SolidColorTexture::new(albedo)))
+    }
+
+    pub fn from_texture(tex: Arc<dyn Texture>) -> Self {
+        Self { tex }
     }
 }
 
@@ -29,7 +36,8 @@ impl Material for Lambertian {
         }
 
         let scattered = Ray::new(&rec.p, &scatter_direction);
-        Some((self.albedo, scattered))
+        let attenuation = self.tex.value(rec.u, rec.v, &rec.p);
+        Some((attenuation, scattered))
     }
 }
 

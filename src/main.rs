@@ -9,6 +9,7 @@ mod material;
 mod ray;
 mod rtweekend;
 mod sphere;
+mod texture;
 
 use std::sync::Arc;
 
@@ -21,16 +22,21 @@ use crate::rtweekend::{
     Point3, Vec3, random_double, random_double_range, random_vec3, random_vec3_min_max,
 };
 use crate::sphere::Sphere;
+use crate::texture::{CheckerTexture, Texture};
 
-fn main() -> std::io::Result<()> {
+fn bouncing_spheres() -> std::io::Result<()> {
     // World
     let mut world = HittableList::new();
 
-    let ground_material = Arc::new(Lambertian::new(Color::new(0.5, 0.5, 0.5)));
+    let checker: Arc<dyn Texture> = Arc::new(CheckerTexture::from_colors(
+        0.32,
+        Color::new(0.2, 0.3, 0.1),
+        Color::new(0.9, 0.9, 0.9),
+    ));
     world.add(Box::new(Sphere::new(
         &Point3::new(0.0, -1000.0, 0.0),
         1000.0,
-        ground_material,
+        Arc::new(Lambertian::from_texture(checker)),
     )));
 
     for a in -11..11 {
@@ -100,4 +106,53 @@ fn main() -> std::io::Result<()> {
     cam.focus_dist = 10.0;
 
     cam.render(&world)
+}
+
+fn checkered_spheres() -> std::io::Result<()> {
+    // World
+    let mut world = HittableList::new();
+
+    let checker: Arc<dyn Texture> = Arc::new(CheckerTexture::from_colors(
+        0.32,
+        Color::new(0.2, 0.3, 0.1),
+        Color::new(0.9, 0.9, 0.9),
+    ));
+
+    world.add(Box::new(Sphere::new(
+        &Point3::new(0.0, -10.0, 0.0),
+        10.0,
+        Arc::new(Lambertian::from_texture(Arc::clone(&checker))),
+    )));
+    world.add(Box::new(Sphere::new(
+        &Point3::new(0.0, 10.0, 0.0),
+        10.0,
+        Arc::new(Lambertian::from_texture(checker)),
+    )));
+
+    let world = BVHNode::from_list(world);
+
+    // Camera
+    let mut cam = Camera::new();
+    cam.aspect_ratio = 16.0 / 9.0;
+    cam.image_width = 400;
+    cam.samples_per_pixel = 100;
+    cam.max_depth = 50;
+
+    cam.vfov = 20.0;
+    cam.lookfrom = Point3::new(13.0, 2.0, 3.0);
+    cam.lookat = Point3::new(0.0, 0.0, 0.0);
+    cam.vup = Vec3::new(0.0, 1.0, 0.0);
+
+    cam.defocus_angle = 0.0;
+
+    cam.render(&world)
+}
+
+fn main() -> std::io::Result<()> {
+    // Pick the scene to render.
+    match 2 {
+        1 => bouncing_spheres(),
+        2 => checkered_spheres(),
+        _ => unreachable!(),
+    }
 }
