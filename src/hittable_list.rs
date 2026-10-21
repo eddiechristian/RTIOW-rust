@@ -2,6 +2,7 @@ use crate::aabb::AABB;
 use crate::hittable::{BBox, HitRecord, Hittable};
 use crate::interval::Interval;
 use crate::ray::Ray;
+use crate::rtweekend::{Point3, Vec3, random_int};
 
 pub struct HittableList {
     pub objects: Vec<Box<dyn Hittable>>,
@@ -41,6 +42,26 @@ impl Hittable for HittableList {
         }
 
         hit_anything
+    }
+
+    // Equal mixture of every member's density: pick a member at random, then sample it.
+    fn pdf_value(&self, origin: &Point3, direction: &Vec3) -> f64 {
+        if self.objects.is_empty() {
+            return 0.0;
+        }
+        let weight = 1.0 / self.objects.len() as f64;
+        self.objects
+            .iter()
+            .map(|object| weight * object.pdf_value(origin, direction))
+            .sum()
+    }
+
+    fn random(&self, origin: &Point3) -> Vec3 {
+        if self.objects.is_empty() {
+            return Vec3::new(1.0, 0.0, 0.0);
+        }
+        let index = random_int(0, self.objects.len() as i32 - 1) as usize;
+        self.objects[index].random(origin)
     }
 }
 

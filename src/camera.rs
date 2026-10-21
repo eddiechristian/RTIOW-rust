@@ -7,6 +7,8 @@ use rayon::prelude::*;
 use crate::color::{Color, write_color};
 use crate::hittable::Hittable;
 use crate::interval::Interval;
+use crate::material::Scatter;
+use crate::pdf::{HittablePdf, MixturePdf, Pdf};
 use crate::ray::Ray;
 use crate::rtweekend::{Point3, Vec3, degrees_to_radians, random_double, random_in_unit_disk};
 
@@ -27,6 +29,8 @@ pub struct Camera {
 
     image_height: i32,        // Rendered image height
     pixel_samples_scale: f64, // Color scale factor for a sum of pixel samples
+    sqrt_spp: i32,            // Square root of number of samples per pixel
+    recip_sqrt_spp: f64,      // 1 / sqrt_spp
     center: Point3,           // Camera center
     pixel00_loc: Point3,      // Location of pixel 0, 0
     pixel_delta_u: Vec3,      // Offset to pixel to the right
@@ -54,6 +58,8 @@ impl Camera {
             focus_dist: 10.0,
             image_height: 0,
             pixel_samples_scale: 0.0,
+            sqrt_spp: 0,
+            recip_sqrt_spp: 0.0,
             center: Point3::origin(),
             pixel00_loc: Point3::origin(),
             pixel_delta_u: Vec3::zeros(),
@@ -66,7 +72,13 @@ impl Camera {
         }
     }
 
-    pub fn render(&mut self, world: &dyn Hittable) -> io::Result<()> {
+    // `lights` are the objects to aim extra rays at (importance sampling);
+    // None samples only by material, as scenes lit by the sky need.
+    pub fn render(
+        &mut self,
+        world: &dyn Hittable,
+        lights: Option<&dyn Hittable>,
+    ) -> io::Result<()> {
         self.initialize();
 
         let file = File::create("gradient.ppm")?;
@@ -85,9 +97,12 @@ impl Camera {
                 let row = (0..self.image_width)
                     .map(|i| {
                         let mut pixel_color = Color::new(0.0, 0.0, 0.0);
-                        for _ in 0..self.samples_per_pixel {
-                            let r = self.get_ray(i, j);
-                            pixel_color += self.ray_color(&r, self.max_depth, world);
+                        // Stratified: one jittered sample in each cell of a sqrt_spp × sqrt_spp grid.
+                        for s_j in 0..self.sqrt_spp {
+                            for s_i in 0..self.sqrt_spp {
+                                let r = self.get_ray(i, j, s_i, s_j);
+                                pixel_color += self.ray_color(&r, self.max_depth, world, lights);
+                            }
                         }
                         self.pixel_samples_scale * pixel_color
                     })
@@ -113,7 +128,10 @@ impl Camera {
     fn initialize(&mut self) {
         self.image_height = ((self.image_width as f64 / self.aspect_ratio) as i32).max(1);
 
-        self.pixel_samples_scale = 1.0 / self.samples_per_pixel as f64;
+        // Samples per pixel is rounded down to a perfect square for stratification.
+        self.sqrt_spp = ((self.samples_per_pixel as f64).sqrt() as i32).max(1);
+        self.pixel_samples_scale = 1.0 / (self.sqrt_spp * self.sqrt_spp) as f64;
+        self.recip_sqrt_spp = 1.0 / self.sqrt_spp as f64;
 
         self.center = self.lookfrom;
 
@@ -148,9 +166,9 @@ impl Camera {
     }
 
     // Construct a camera ray originating from the defocus disk and directed at a randomly
-    // sampled point around the pixel location i, j.
-    fn get_ray(&self, i: i32, j: i32) -> Ray {
-        let offset = Self::sample_square();
+    // sampled point around the pixel location i, j, inside stratification cell s_i, s_j.
+    fn get_ray(&self, i: i32, j: i32, s_i: i32, s_j: i32) -> Ray {
+        let offset = self.sample_square_stratified(s_i, s_j);
         let pixel_sample = self.pixel00_loc
             + ((i as f64 + offset.x) * self.pixel_delta_u)
             + ((j as f64 + offset.y) * self.pixel_delta_v);
@@ -165,9 +183,12 @@ impl Camera {
         Ray::new(&ray_origin, &ray_direction)
     }
 
-    // Returns the vector to a random point in the [-.5,-.5]-[+.5,+.5] unit square.
-    fn sample_square() -> Vec3 {
-        Vec3::new(random_double() - 0.5, random_double() - 0.5, 0.0)
+    // Returns the vector to a random point in cell (s_i, s_j) of the
+    // [-.5,-.5]-[+.5,+.5] unit square, divided into a sqrt_spp × sqrt_spp grid.
+    fn sample_square_stratified(&self, s_i: i32, s_j: i32) -> Vec3 {
+        let px = ((s_i as f64 + random_double()) * self.recip_sqrt_spp) - 0.5;
+        let py = ((s_j as f64 + random_double()) * self.recip_sqrt_spp) - 0.5;
+        Vec3::new(px, py, 0.0)
     }
 
     // Returns a random point in the camera defocus disk.
@@ -176,7 +197,13 @@ impl Camera {
         self.center + (p.x * self.defocus_disk_u) + (p.y * self.defocus_disk_v)
     }
 
-    fn ray_color(&self, r: &Ray, depth: i32, world: &dyn Hittable) -> Color {
+    fn ray_color(
+        &self,
+        r: &Ray,
+        depth: i32,
+        world: &dyn Hittable,
+        lights: Option<&dyn Hittable>,
+    ) -> Color {
         // If we've exceeded the ray bounce limit, no more light is gathered.
         if depth <= 0 {
             return Color::new(0.0, 0.0, 0.0);
@@ -187,15 +214,51 @@ impl Camera {
             return self.background.unwrap_or_else(|| Self::sky_color(r));
         };
 
-        // Light the surface gives off, plus light it scatters from elsewhere.
-        let color_from_emission = rec.mat.emitted(rec.u, rec.v, &rec.p);
-        match rec.mat.scatter(r, &rec) {
-            Some((attenuation, scattered)) => {
-                color_from_emission
-                    + attenuation.component_mul(&self.ray_color(&scattered, depth - 1, world))
+        let color_from_emission = rec.mat.emitted(r, &rec);
+
+        let Some(srec) = rec.mat.scatter(r, &rec) else {
+            return color_from_emission;
+        };
+
+        let surface_pdf = match srec.scatter {
+            // Specular: follow the one direction, no PDF weighting.
+            Scatter::SkipPdf(scattered) => {
+                return color_from_emission
+                    + srec.attenuation.component_mul(&self.ray_color(
+                        &scattered,
+                        depth - 1,
+                        world,
+                        lights,
+                    ));
             }
-            None => color_from_emission,
+            Scatter::Pdf(pdf) => pdf,
+        };
+
+        // Pick the next direction: half the time toward a light, half by the material.
+        let light_pdf = lights.map(|lights| HittablePdf::new(lights, rec.p));
+        let mixture;
+        let pdf: &dyn Pdf = match &light_pdf {
+            Some(light_pdf) => {
+                mixture = MixturePdf::new(light_pdf, surface_pdf.as_ref());
+                &mixture
+            }
+            None => surface_pdf.as_ref(),
+        };
+
+        let scattered = Ray::new(&rec.p, &pdf.generate());
+        let pdf_value = pdf.value(&scattered.dir);
+        // A direction the PDF can't produce carries no weight (and would divide by zero).
+        if pdf_value <= 0.0 {
+            return color_from_emission;
         }
+
+        // Monte Carlo estimate: what the material really does, divided by how we sampled.
+        let scattering_pdf = rec.mat.scattering_pdf(r, &rec, &scattered);
+        let sample_color = self.ray_color(&scattered, depth - 1, world, lights);
+        let color_from_scatter =
+            (srec.attenuation * scattering_pdf).component_mul(&sample_color) / pdf_value;
+
+        color_from_emission + color_from_scatter
     }
 
     // Vertical white-to-blue gradient used when no background color is set.

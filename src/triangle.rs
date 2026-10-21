@@ -6,7 +6,7 @@ use crate::hittable_list::HittableList;
 use crate::interval::Interval;
 use crate::material::Material;
 use crate::ray::Ray;
-use crate::rtweekend::{Point3, Vec3};
+use crate::rtweekend::{Point3, Vec3, random_double};
 
 // Replaces the book's quad: every flat shape is built from triangles.
 pub struct Triangle {
@@ -14,6 +14,7 @@ pub struct Triangle {
     e1: Vec3, // b - a
     e2: Vec3, // c - a
     normal: Vec3,
+    area: f64,
     mat: Arc<dyn Material>,
     bbox: AABB,
 }
@@ -24,11 +25,13 @@ impl Triangle {
         let e1 = b - a;
         let e2 = c - a;
         let bbox = AABB::from_two_bboxes(&AABB::from_points(a, b), &AABB::from_points(a, c));
+        let n = e1.cross(&e2);
         Self {
             a,
             e1,
             e2,
-            normal: e1.cross(&e2).normalize(),
+            normal: n.normalize(),
+            area: 0.5 * n.norm(),
             mat,
             bbox,
         }
@@ -76,6 +79,33 @@ impl Hittable for Triangle {
         };
         rec.set_face_normal(ray, &self.normal);
         Some(rec)
+    }
+
+    // Uniform sampling by area turns into a density over directions of
+    // distance² / (|cos| × area), where cos is between the ray and the normal.
+    fn pdf_value(&self, origin: &Point3, direction: &Vec3) -> f64 {
+        let Some(rec) = self.hit(
+            &Ray::new(origin, direction),
+            Interval::new(0.001, f64::INFINITY),
+        ) else {
+            return 0.0;
+        };
+
+        let distance_squared = rec.t * rec.t * direction.norm_squared();
+        let cosine = (direction.dot(&self.normal) / direction.norm()).abs();
+        distance_squared / (cosine * self.area)
+    }
+
+    // Direction from origin to a uniformly random point on the triangle.
+    fn random(&self, origin: &Point3) -> Vec3 {
+        let (mut r1, mut r2) = (random_double(), random_double());
+        // A point in the unit square past the diagonal is folded back into the triangle half.
+        if r1 + r2 > 1.0 {
+            r1 = 1.0 - r1;
+            r2 = 1.0 - r2;
+        }
+        let p = self.a + r1 * self.e1 + r2 * self.e2;
+        p - origin
     }
 }
 

@@ -7,6 +7,8 @@ mod hittable_list;
 mod instance;
 mod interval;
 mod material;
+mod onb;
+mod pdf;
 mod perlin;
 mod ray;
 mod rtweekend;
@@ -111,7 +113,7 @@ fn bouncing_spheres() -> std::io::Result<()> {
     cam.defocus_angle = 0.6;
     cam.focus_dist = 10.0;
 
-    cam.render(&world)
+    cam.render(&world, None)
 }
 
 fn checkered_spheres() -> std::io::Result<()> {
@@ -151,7 +153,7 @@ fn checkered_spheres() -> std::io::Result<()> {
 
     cam.defocus_angle = 0.0;
 
-    cam.render(&world)
+    cam.render(&world, None)
 }
 
 fn perlin_spheres() -> std::io::Result<()> {
@@ -199,7 +201,7 @@ fn perlin_spheres() -> std::io::Result<()> {
 
     cam.defocus_angle = 0.0;
 
-    cam.render(&world)
+    cam.render(&world, None)
 }
 
 fn cornell_box() -> std::io::Result<()> {
@@ -288,7 +290,7 @@ fn cornell_box() -> std::io::Result<()> {
 
     cam.defocus_angle = 0.0;
 
-    cam.render(&world)
+    cam.render(&world, None)
 }
 
 // Test scene for triangle shapes and instances. Every shape is built around the
@@ -390,17 +392,120 @@ fn shapes() -> std::io::Result<()> {
 
     cam.defocus_angle = 0.0;
 
-    cam.render(&world)
+    cam.render(&world, None)
+}
+
+// Book 3's final Cornell box: importance-sampled toward the ceiling light and
+// the glass sphere, so 1000 samples come out far less noisy than Book 2's.
+fn cornell_box_sampled() -> std::io::Result<()> {
+    // World
+    let mut world = HittableList::new();
+
+    let red: Arc<dyn Material> = Arc::new(Lambertian::new(Color::new(0.65, 0.05, 0.05)));
+    let white: Arc<dyn Material> = Arc::new(Lambertian::new(Color::new(0.73, 0.73, 0.73)));
+    let green: Arc<dyn Material> = Arc::new(Lambertian::new(Color::new(0.12, 0.45, 0.15)));
+    let light: Arc<dyn Material> = Arc::new(DiffuseLight::new(Color::new(15.0, 15.0, 15.0)));
+
+    // Walls, and a ceiling light whose front face (u × v) points down into the room.
+    let p = Point3::new;
+    let v = Vec3::new;
+    let light_corner = p(343.0, 554.0, 332.0);
+    let (light_u, light_v) = (v(-130.0, 0.0, 0.0), v(0.0, 0.0, -105.0));
+    add_quad(
+        &mut world,
+        p(555.0, 0.0, 0.0),
+        v(0.0, 555.0, 0.0),
+        v(0.0, 0.0, 555.0),
+        green,
+    );
+    add_quad(
+        &mut world,
+        p(0.0, 0.0, 0.0),
+        v(0.0, 555.0, 0.0),
+        v(0.0, 0.0, 555.0),
+        red,
+    );
+    add_quad(
+        &mut world,
+        light_corner,
+        light_u,
+        light_v,
+        Arc::clone(&light),
+    );
+    add_quad(
+        &mut world,
+        p(0.0, 0.0, 0.0),
+        v(555.0, 0.0, 0.0),
+        v(0.0, 0.0, 555.0),
+        Arc::clone(&white),
+    );
+    add_quad(
+        &mut world,
+        p(555.0, 555.0, 555.0),
+        v(-555.0, 0.0, 0.0),
+        v(0.0, 0.0, -555.0),
+        Arc::clone(&white),
+    );
+    add_quad(
+        &mut world,
+        p(0.0, 0.0, 555.0),
+        v(555.0, 0.0, 0.0),
+        v(0.0, 555.0, 0.0),
+        Arc::clone(&white),
+    );
+
+    // Box
+    let box1: Arc<dyn Hittable> =
+        Arc::new(make_box(p(0.0, 0.0, 0.0), p(165.0, 330.0, 165.0), white));
+    let box1: Arc<dyn Hittable> = Arc::new(Rotate::new(box1, Vec3::y(), 15.0));
+    world.add(Box::new(Translate::new(box1, v(265.0, 0.0, 295.0))));
+
+    // Glass sphere
+    let glass: Arc<dyn Material> = Arc::new(Dielectric::new(1.5));
+    let sphere_center = p(190.0, 90.0, 190.0);
+    world.add(Box::new(Sphere::new(&sphere_center, 90.0, glass)));
+
+    let world = BVHNode::from_list(world);
+
+    // Objects to aim extra rays at: the same light (two triangles) and glass sphere.
+    // Only their geometry is used, so the material is a placeholder (the book passes none).
+    let mut lights = HittableList::new();
+    add_quad(
+        &mut lights,
+        light_corner,
+        light_u,
+        light_v,
+        Arc::clone(&light),
+    );
+    lights.add(Box::new(Sphere::new(&sphere_center, 90.0, light)));
+
+    // Camera
+    let mut cam = Camera::new();
+    cam.aspect_ratio = 1.0;
+    cam.image_width = 600;
+    cam.samples_per_pixel = 1000;
+    cam.max_depth = 50;
+    cam.background = Some(Color::new(0.0, 0.0, 0.0));
+
+    cam.vfov = 40.0;
+    cam.lookfrom = Point3::new(278.0, 278.0, -800.0);
+    cam.lookat = Point3::new(278.0, 278.0, 0.0);
+    cam.vup = Vec3::new(0.0, 1.0, 0.0);
+
+    cam.defocus_angle = 0.0;
+
+    cam.render(&world, Some(&lights))
 }
 
 fn main() -> std::io::Result<()> {
     // Pick the scene to render.
-    match 5 {
+    match 6 {
         1 => bouncing_spheres(),
         2 => checkered_spheres(),
         3 => perlin_spheres(),
         4 => cornell_box(),
         5 => shapes(),
+        6 => cornell_box_sampled(),
         _ => unreachable!(),
     }
 }

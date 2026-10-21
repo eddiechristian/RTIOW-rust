@@ -41,6 +41,15 @@ impl Hittable for Translate {
         rec.p += self.offset;
         Some(rec)
     }
+
+    // Not in the book: forward light sampling, so moved objects can be lights too.
+    fn pdf_value(&self, origin: &Point3, direction: &Vec3) -> f64 {
+        self.object.pdf_value(&(origin - self.offset), direction)
+    }
+
+    fn random(&self, origin: &Point3) -> Vec3 {
+        self.object.random(&(origin - self.offset))
+    }
 }
 
 impl BBox for Translate {
@@ -98,6 +107,18 @@ impl Hittable for Rotate {
         rec.p = self.rotation * rec.p;
         rec.normal = self.rotation * rec.normal;
         Some(rec)
+    }
+
+    // Not in the book: forward light sampling, so rotated objects can be lights too.
+    fn pdf_value(&self, origin: &Point3, direction: &Vec3) -> f64 {
+        let inverse = self.rotation.inverse();
+        self.object
+            .pdf_value(&(inverse * origin), &(inverse * direction))
+    }
+
+    fn random(&self, origin: &Point3) -> Vec3 {
+        let inverse = self.rotation.inverse();
+        self.rotation * self.object.random(&(inverse * origin))
     }
 }
 

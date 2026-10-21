@@ -32,6 +32,17 @@ impl HitRecord {
 // BBox is a supertrait so a `dyn Hittable` can also report its bounding box.
 pub trait Hittable: BBox + Send + Sync {
     fn hit(&self, ray: &Ray, ray_t: Interval) -> Option<HitRecord>;
+
+    // Light sampling: the density of picking `direction` from `origin` with
+    // `random`, and a random direction from `origin` toward this object.
+    // Only shapes used as lights need real versions.
+    fn pdf_value(&self, _origin: &Point3, _direction: &Vec3) -> f64 {
+        0.0
+    }
+
+    fn random(&self, _origin: &Point3) -> Vec3 {
+        Vec3::new(1.0, 0.0, 0.0)
+    }
 }
 
 pub trait BBox {

@@ -2,18 +2,41 @@ use std::sync::Arc;
 
 use crate::color::Color;
 use crate::hittable::HitRecord;
+use crate::pdf::{CosinePdf, Pdf};
 use crate::ray::Ray;
-use crate::rtweekend::{Point3, near_zero, random_double, random_unit_vector, reflect, refract};
+use crate::rtweekend::{random_double, random_unit_vector, reflect, refract};
 use crate::texture::{SolidColorTexture, Texture};
+
+// How a material scatters an incoming ray (the book's scatter_record).
+pub struct ScatterRecord {
+    pub attenuation: Color,
+    pub scatter: Scatter,
+}
+
+pub enum Scatter {
+    // Diffuse-like: the camera picks the direction, mixing this PDF with
+    // light sampling, and weights the result by scattering_pdf / pdf.
+    Pdf(Box<dyn Pdf>),
+    // Specular (metal, glass): one exact direction, nothing to importance-sample
+    // (the book's skip_pdf + skip_pdf_ray).
+    SkipPdf(Ray),
+}
 
 // Send + Sync so materials can be shared across rayon render threads.
 pub trait Material: Send + Sync {
-    // Returns the attenuation and scattered ray, or None if the ray is absorbed.
-    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)>;
+    // Returns how the ray scatters, or None if it is absorbed.
+    fn scatter(&self, _r_in: &Ray, _rec: &HitRecord) -> Option<ScatterRecord> {
+        None
+    }
 
-    // Light given off by the surface; only lights override this.
-    fn emitted(&self, _u: f64, _v: f64, _p: &Point3) -> Color {
+    // Light given off at the hit point; only lights override this.
+    fn emitted(&self, _r_in: &Ray, _rec: &HitRecord) -> Color {
         Color::new(0.0, 0.0, 0.0)
+    }
+
+    // The material's actual density of scattering into `scattered`.
+    fn scattering_pdf(&self, _r_in: &Ray, _rec: &HitRecord, _scattered: &Ray) -> f64 {
+        0.0
     }
 }
 
@@ -32,17 +55,17 @@ impl Lambertian {
 }
 
 impl Material for Lambertian {
-    fn scatter(&self, _r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
-        let mut scatter_direction = rec.normal + random_unit_vector();
+    fn scatter(&self, _r_in: &Ray, rec: &HitRecord) -> Option<ScatterRecord> {
+        Some(ScatterRecord {
+            attenuation: self.tex.value(rec.u, rec.v, &rec.p),
+            scatter: Scatter::Pdf(Box::new(CosinePdf::new(&rec.normal))),
+        })
+    }
 
-        // Catch degenerate scatter direction
-        if near_zero(&scatter_direction) {
-            scatter_direction = rec.normal;
-        }
-
-        let scattered = Ray::new(&rec.p, &scatter_direction);
-        let attenuation = self.tex.value(rec.u, rec.v, &rec.p);
-        Some((attenuation, scattered))
+    // Ideal diffuse reflection: density cos(theta) / pi, zero below the surface.
+    fn scattering_pdf(&self, _r_in: &Ray, rec: &HitRecord, scattered: &Ray) -> f64 {
+        let cos_theta = rec.normal.dot(&scattered.dir.normalize());
+        (cos_theta / std::f64::consts::PI).max(0.0)
     }
 }
 
@@ -61,14 +84,17 @@ impl Metal {
 }
 
 impl Material for Metal {
-    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<ScatterRecord> {
         let reflected = reflect(&r_in.dir, &rec.normal);
         let reflected = reflected.normalize() + (self.fuzz * random_unit_vector());
         let scattered = Ray::new(&rec.p, &reflected);
 
         // Fuzz can push the ray below the surface; absorb it if so.
         if scattered.dir.dot(&rec.normal) > 0.0 {
-            Some((self.albedo, scattered))
+            Some(ScatterRecord {
+                attenuation: self.albedo,
+                scatter: Scatter::SkipPdf(scattered),
+            })
         } else {
             None
         }
@@ -95,7 +121,7 @@ impl Dielectric {
 }
 
 impl Material for Dielectric {
-    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<ScatterRecord> {
         let attenuation = Color::new(1.0, 1.0, 1.0);
         let ri = if rec.front_face {
             1.0 / self.refraction_index
@@ -115,7 +141,10 @@ impl Material for Dielectric {
             refract(&unit_direction, &rec.normal, ri)
         };
 
-        Some((attenuation, Ray::new(&rec.p, &direction)))
+        Some(ScatterRecord {
+            attenuation,
+            scatter: Scatter::SkipPdf(Ray::new(&rec.p, &direction)),
+        })
     }
 }
 
@@ -133,13 +162,13 @@ impl DiffuseLight {
     }
 }
 
+// A light only emits; it never scatters (the default scatter returns None).
 impl Material for DiffuseLight {
-    // A light only emits; it never scatters.
-    fn scatter(&self, _r_in: &Ray, _rec: &HitRecord) -> Option<(Color, Ray)> {
-        None
-    }
-
-    fn emitted(&self, u: f64, v: f64, p: &Point3) -> Color {
-        self.tex.value(u, v, p)
+    // One-sided: only the front face glows, so an add_quad light shines along u × v.
+    fn emitted(&self, _r_in: &Ray, rec: &HitRecord) -> Color {
+        if !rec.front_face {
+            return Color::new(0.0, 0.0, 0.0);
+        }
+        self.tex.value(rec.u, rec.v, &rec.p)
     }
 }

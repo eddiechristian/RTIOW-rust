@@ -51,6 +51,19 @@ pub fn random_unit_vector() -> Vec3 {
     }
 }
 
+// Returns a random direction on the +z hemisphere, with density cos(theta)/pi.
+pub fn random_cosine_direction() -> Vec3 {
+    let r1 = random_double();
+    let r2 = random_double();
+
+    let phi = 2.0 * std::f64::consts::PI * r1;
+    let x = phi.cos() * r2.sqrt();
+    let y = phi.sin() * r2.sqrt();
+    let z = (1.0 - r2).sqrt();
+
+    Vec3::new(x, y, z)
+}
+
 // Returns a random point inside the unit disk in the xy plane.
 pub fn random_in_unit_disk() -> Vec3 {
     loop {
@@ -66,6 +79,7 @@ pub fn random_in_unit_disk() -> Vec3 {
 }
 
 // Return true if the vector is close to zero in all dimensions.
+#[allow(dead_code)] // Lambertian used it until cosine-PDF sampling (Book 3); kept as in the book
 pub fn near_zero(v: &Vec3) -> bool {
     let s = 1e-8;
     v.x.abs() < s && v.y.abs() < s && v.z.abs() < s
