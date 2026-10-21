@@ -3,13 +3,18 @@ use std::sync::Arc;
 use crate::color::Color;
 use crate::hittable::HitRecord;
 use crate::ray::Ray;
-use crate::rtweekend::{near_zero, random_double, random_unit_vector, reflect, refract};
+use crate::rtweekend::{Point3, near_zero, random_double, random_unit_vector, reflect, refract};
 use crate::texture::{SolidColorTexture, Texture};
 
 // Send + Sync so materials can be shared across rayon render threads.
 pub trait Material: Send + Sync {
     // Returns the attenuation and scattered ray, or None if the ray is absorbed.
     fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)>;
+
+    // Light given off by the surface; only lights override this.
+    fn emitted(&self, _u: f64, _v: f64, _p: &Point3) -> Color {
+        Color::new(0.0, 0.0, 0.0)
+    }
 }
 
 pub struct Lambertian {
@@ -111,5 +116,30 @@ impl Material for Dielectric {
         };
 
         Some((attenuation, Ray::new(&rec.p, &direction)))
+    }
+}
+
+pub struct DiffuseLight {
+    tex: Arc<dyn Texture>,
+}
+
+impl DiffuseLight {
+    pub fn new(emit: Color) -> Self {
+        Self::from_texture(Arc::new(SolidColorTexture::new(emit)))
+    }
+
+    pub fn from_texture(tex: Arc<dyn Texture>) -> Self {
+        Self { tex }
+    }
+}
+
+impl Material for DiffuseLight {
+    // A light only emits; it never scatters.
+    fn scatter(&self, _r_in: &Ray, _rec: &HitRecord) -> Option<(Color, Ray)> {
+        None
+    }
+
+    fn emitted(&self, u: f64, v: f64, p: &Point3) -> Color {
+        self.tex.value(u, v, p)
     }
 }

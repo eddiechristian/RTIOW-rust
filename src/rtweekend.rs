@@ -17,6 +17,11 @@ pub fn random_double_range(min: f64, max: f64) -> f64 {
     min + (max - min) * random_double()
 }
 
+// Returns a random integer in [min,max].
+pub fn random_int(min: i32, max: i32) -> i32 {
+    random_double_range(min as f64, (max + 1) as f64) as i32
+}
+
 pub fn random_vec3() -> Vec3 {
     let mut vec = Vec3::default();
     vec.x = random_double();

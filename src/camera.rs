@@ -11,10 +11,11 @@ use crate::ray::Ray;
 use crate::rtweekend::{Point3, Vec3, degrees_to_radians, random_double, random_in_unit_disk};
 
 pub struct Camera {
-    pub aspect_ratio: f64,      // Ratio of image width over height
-    pub image_width: i32,       // Rendered image width in pixel count
-    pub samples_per_pixel: i32, // Count of random samples for each pixel
-    pub max_depth: i32,         // Maximum number of ray bounces into scene
+    pub aspect_ratio: f64,         // Ratio of image width over height
+    pub image_width: i32,          // Rendered image width in pixel count
+    pub samples_per_pixel: i32,    // Count of random samples for each pixel
+    pub max_depth: i32,            // Maximum number of ray bounces into scene
+    pub background: Option<Color>, // Scene background color; None draws the sky gradient
 
     pub vfov: f64,        // Vertical view angle (field of view)
     pub lookfrom: Point3, // Point camera is looking from
@@ -44,6 +45,7 @@ impl Camera {
             image_width: 100,
             samples_per_pixel: 10,
             max_depth: 10,
+            background: None,
             vfov: 90.0,
             lookfrom: Point3::new(0.0, 0.0, 0.0),
             lookat: Point3::new(0.0, 0.0, -1.0),
@@ -85,7 +87,7 @@ impl Camera {
                         let mut pixel_color = Color::new(0.0, 0.0, 0.0);
                         for _ in 0..self.samples_per_pixel {
                             let r = self.get_ray(i, j);
-                            pixel_color += Self::ray_color(&r, self.max_depth, world);
+                            pixel_color += self.ray_color(&r, self.max_depth, world);
                         }
                         self.pixel_samples_scale * pixel_color
                     })
@@ -174,21 +176,30 @@ impl Camera {
         self.center + (p.x * self.defocus_disk_u) + (p.y * self.defocus_disk_v)
     }
 
-    fn ray_color(r: &Ray, depth: i32, world: &dyn Hittable) -> Color {
+    fn ray_color(&self, r: &Ray, depth: i32, world: &dyn Hittable) -> Color {
         // If we've exceeded the ray bounce limit, no more light is gathered.
         if depth <= 0 {
             return Color::new(0.0, 0.0, 0.0);
         }
 
         // Start at 0.001 so floating-point error doesn't re-hit the surface (shadow acne).
-        if let Some(rec) = world.hit(r, Interval::new(0.001, f64::INFINITY)) {
-            // The material decides how the ray scatters and how much light it keeps.
-            if let Some((attenuation, scattered)) = rec.mat.scatter(r, &rec) {
-                return attenuation.component_mul(&Self::ray_color(&scattered, depth - 1, world));
-            }
-            return Color::new(0.0, 0.0, 0.0);
-        }
+        let Some(rec) = world.hit(r, Interval::new(0.001, f64::INFINITY)) else {
+            return self.background.unwrap_or_else(|| Self::sky_color(r));
+        };
 
+        // Light the surface gives off, plus light it scatters from elsewhere.
+        let color_from_emission = rec.mat.emitted(rec.u, rec.v, &rec.p);
+        match rec.mat.scatter(r, &rec) {
+            Some((attenuation, scattered)) => {
+                color_from_emission
+                    + attenuation.component_mul(&self.ray_color(&scattered, depth - 1, world))
+            }
+            None => color_from_emission,
+        }
+    }
+
+    // Vertical white-to-blue gradient used when no background color is set.
+    fn sky_color(r: &Ray) -> Color {
         // 1. Get the unit vector of the ray's direction (.normalize() in nalgebra)
         let unit_direction: Vec3 = r.dir.normalize();
 

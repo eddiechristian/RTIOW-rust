@@ -4,7 +4,7 @@ pub struct Interval {
     pub max: f64,
 }
 
-// contains, expand and UNIVERSE are part of the book's interval API; not called yet.
+// UNIVERSE is part of the book's interval API; not called yet.
 #[allow(dead_code)]
 impl Interval {
     pub const EMPTY: Interval = Interval {

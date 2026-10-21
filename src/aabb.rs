@@ -10,7 +10,7 @@ pub struct AABB {
     pub z: Interval,
 }
 
-// new and UNIVERSE are part of the book's aabb API; not called yet.
+// UNIVERSE is part of the book's aabb API; not called yet.
 #[allow(dead_code)]
 impl AABB {
     pub const EMPTY: AABB = AABB {
@@ -36,7 +36,7 @@ impl AABB {
     }
 
     pub fn from_points(a: Point3, b: Point3) -> Self {
-        Self {
+        let mut bbox = Self {
             x: if a[0] <= b[0] {
                 Interval::new(a[0], b[0])
             } else {
@@ -52,6 +52,23 @@ impl AABB {
             } else {
                 Interval::new(b[2], a[2])
             },
+        };
+        bbox.pad_to_minimums();
+        bbox
+    }
+
+    // Widen any side thinner than delta, so flat shapes (an axis-aligned
+    // triangle has zero thickness) never get a degenerate box.
+    fn pad_to_minimums(&mut self) {
+        let delta = 0.0001;
+        if self.x.size() < delta {
+            self.x = self.x.expand(delta);
+        }
+        if self.y.size() < delta {
+            self.y = self.y.expand(delta);
+        }
+        if self.z.size() < delta {
+            self.z = self.z.expand(delta);
         }
     }
 
